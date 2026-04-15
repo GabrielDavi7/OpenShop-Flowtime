@@ -1,0 +1,16 @@
+# Arquivos objeto (compilados intermediários)
+*.o
+
+# Executáveis gerados pelo Makefile
+teste_grafo
+solver_instancias
+
+# Executáveis nativos do Windows
+*.exe
+
+# Configurações locais
+.vscode/
+
+# Arquivos temporários do Sistema Operacional
+Thumbs.db
+.DS_Store
