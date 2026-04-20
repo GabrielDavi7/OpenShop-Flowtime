@@ -1,6 +1,7 @@
 #include "Grafo.hpp"
 #include <iostream>
 #include <queue> // fila para o algoritmo de ordenação topológica usando algoritmo de Kahn
+#include <algorithm> // para usar a função reverse
 
 Grafo::Grafo(int n) { //construtor do grafo, recebe o numero de vertices
     num_vertices = n;
@@ -45,4 +46,27 @@ void Grafo::caminhadaTopologica(){ //com algoritimo de kahn
             }
         }
     }
+}
+
+void Grafo::imprimirCaminhoMaximo(int destino) {
+    if (destino < 0 || destino >= num_vertices) {
+        std::cout << "Destino inválido." << std::endl;
+        return;
+    }
+
+    std::vector<int> caminho; // vetor para armazenar o caminho máximo
+    int atual = destino; // ultima maquina do job, ou seja, o destino
+
+    while (atual != -1) { // enquanto não chegar no início do caminho
+        caminho.push_back(atual); // adiciona o vertice atual ao caminho
+        atual = vertices[atual].predecessor_maximo; // anda pra tras para o predecessor do vertice atual, ou seja, a maquina anterior do job
+    }
+
+    std::reverse(caminho.begin(), caminho.end()); // inverte o caminho para mostrar do início ao destino
+
+    std::cout << "Caminho máximo para o destino " << destino << ": ";
+    for (int vertice : caminho) {
+        std::cout << vertice << " ";
+    }
+    std::cout << "\nTempo total: " << vertices[destino].tempo_termino << std::endl; // imprime o tempo total para chegar no destino
 }
