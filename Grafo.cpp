@@ -1,4 +1,4 @@
-#include Grafo.hpp
+#include "Grafo.hpp"
 #include <iostream>
 #include <queue> // fila para o algoritmo de ordenação topológica usando algoritmo de Kahn
 
@@ -12,12 +12,12 @@ Grafo::Grafo(int n) { //construtor do grafo, recebe o numero de vertices
     }
 }
 
-void adicionarAresta(int origem, int destino) {
+void Grafo::adicionarAresta(int origem, int destino) {
     vertices[origem].adjacentes.push_back(destino); // vertice de origem aponta para o vertice de destino
     vertices[destino].grau_entrada++; // vertice de destino tem mais uma aresta apontando para ele aumenta o grau de entrada assim um job com 3 setas apontada pra ele tem grau de entrada 0+3
 }
 
-void caminhadaTopologica(){ //com algoritimo de kahn
+void Grafo::caminhadaTopologica(){ //com algoritimo de kahn
     std::queue<int> fila; 
 
     for(int i=0;  i < num_vertices; i++){
@@ -42,6 +42,7 @@ void caminhadaTopologica(){ //com algoritimo de kahn
             
             if(vertices[vizinhos].grau_entrada == 0){ //se não tem mais dependências, ou seja, grau de entrada 0, pode ser processado adicionamos a fila
                 fila.push(vizinhos); 
+            }
         }
     }
 }
