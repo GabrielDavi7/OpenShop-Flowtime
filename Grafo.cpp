@@ -6,9 +6,9 @@
 Grafo::Grafo(int n) { //construtor do grafo, recebe o numero de vertices
     num_vertices = n;
 
-    vertices.resize(n);
+    vertices.resize(n+1); // +1 para ajustar o índice do vetor, pois os IDs começam em 1
 
-    for (int i = 0; i < n; i++) {
+    for(int i = 1; i <= n; i++){
         vertices[i].id = i;
     }
 }
@@ -69,4 +69,20 @@ void Grafo::imprimirCaminhoMaximo(int destino) {
         std::cout << vertice << " ";
     }
     std::cout << "\nTempo total: " << vertices[destino].tempo_termino << std::endl; // imprime o tempo total para chegar no destino
+}
+
+void Grafo::setPeso(int idVertice, int peso) {
+    if (idVertice < 1 || idVertice > num_vertices) {
+        std::cout << "ID do vértice inválido." << std::endl;
+        return;
+    }
+    vertices[idVertice].peso = peso;
+}
+
+int Grafo::getPeso(int idVertice) {
+    if (idVertice < 1 || idVertice > num_vertices) {
+        std::cout << "ID do vértice inválido." << std::endl;
+        return 0; // Retorna um valor inválido para indicar erro
+    }
+    return vertices[idVertice].peso;
 }
