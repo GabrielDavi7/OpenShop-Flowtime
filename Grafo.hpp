@@ -24,11 +24,13 @@ class Grafo{
     public:
         int num_vertices;
         std::vector<Vertice> vertices;
-
+        
         Grafo(int n);
         void adicionarAresta(int origem, int destino);
         void caminhadaTopologica();
         void imprimirCaminhoMaximo(int destino);
+        void setPeso(int idVertice, int peso);
+        int getPeso(int idVertice);
 };
 
 #endif
