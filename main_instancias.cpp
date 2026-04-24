@@ -2,41 +2,32 @@
 #include "ParserTA.hpp" 
 #include "Grafo.hpp"
 
+#include <filesystem>
+#include <iomanip> // para usar std::setw para formatar a saída
+
 using namespace std;
+namespace fs = std::filesystem;
 
-int main() {
 
-    string caminhoArquivo = "Instancias/ta49Osp.psi";
+int flowtimeSequencial(const string& caminhoArquivo){
 
     Instancia instancia = ParserTA::lerArquivo(caminhoArquivo);
-
     if(instancia.num_trabalhos == 0 || instancia.num_maquinas == 0) {
         cout << "Falha ao ler a instancia do arquivo." << endl;
-        return 1; // Retorna um código de erro
+        return -1; // Retorna um código de erro
     }
 
     int n = instancia.num_trabalhos;
     int m = instancia.num_maquinas;
-    int total_custo = n*m; // Exemplo de cálculo do custo total, pode ser ajustado conforme necessário
-    cout << "Inicializando Grafo com " << total_custo << " vertices..." << endl;
 
-    Grafo grafo(total_custo);
-    
+    Grafo grafo(n*m); // Criamos um grafo com n*m vértices, onde cada vértice representa uma operação (trabalho, máquina)
     for (int i = 0; i < n; i++) {
-        for (int j = 0; j < m; j++)
-        {
+        for (int j = 0; j < m; j++){
             int idVertice = (i * m) + j + 1; // Calcula o ID do vértice com base no trabalho e máquina  
-            
-            int temp = instancia.custos[i][j]; // Obtém o custo do trabalho i na máquina j
-            grafo.setPeso(idVertice,temp); // Define o peso do vértice com o custo correspondente
+            grafo.setPeso(idVertice,instancia.custos[i][j]); // Define o peso do vértice com o custo correspondente
         }  
     }
 
-    cout << "Sucesso! " << total_custo << " operacoes cadastradas no Grafo." << endl;
-
-    cout << "O tempo da ultima operacao (Trabalho " << n-1 << ", Maquina " << m-1 << ") eh: " 
-         << grafo.getPeso(total_custo) << endl;
-    
     for(int maquina=0; maquina < m; maquina++){
         for(int trabalho=0; trabalho < n-1; trabalho++){
             int origem = (trabalho * m) + maquina + 1; // ID do vértice da operação atual
@@ -53,20 +44,52 @@ int main() {
         }
     }
 
-    cout << "Realizando caminhada topologica para calcular o caminho máximo..." << endl;
     grafo.caminhadaTopologica();
 
     int flowtime = 0;
     for(int trabalho=0; trabalho < n; trabalho++){
         int idUltimaOperacao = (trabalho * m) + m; // ID do vértice da última operação de cada trabalho
         int tempoTermino = grafo.vertices[idUltimaOperacao].tempo_termino;
-        cout << "Tempo de término do Trabalho " << trabalho << ": " << tempoTermino << endl;
         flowtime += tempoTermino;
     }
+    return flowtime;
+}
 
-    cout << "\n=========================================" << endl;
-    cout << "FLOWTIME TOTAL (Baseline): " << flowtime << endl;
-    cout << "=========================================" << endl;
+
+int main() {
+
+    setlocale(LC_ALL, "C");
+
+    string caminhoPasta = "instancias/"; // Caminho para a pasta contendo as instâncias
+    cout << "\n======================================================\n";
+    cout << "      PROCESSAMENTO EM LOTE - OPEN SHOP FLOWTIME      \n";
+    cout << "======================================================\n";
+    // Cabeçalho da tabela (setw define a largura da coluna)
+    cout << left << setw(30) << "Arquivo da Instancia" << "| " << "Flowtime Inicial\n";
+    cout << "------------------------------------------------------\n";
+
+    if(!fs::exists(caminhoPasta) || !fs::is_directory(caminhoPasta)) {
+        cout << "A pasta '" << caminhoPasta << "' não existe ou não é um diretório." << endl;
+        return 1;
+    }
+
+    int arquivos_processados = 0;
+
+    for(const auto& entry: fs::directory_iterator(caminhoPasta)) {
+        if(entry.is_regular_file()) {
+            string caminhoArquivo = entry.path().string();
+            int flowtime = flowtimeSequencial(caminhoArquivo);
+            if (flowtime != -1) {
+                cout << left << setw(30) << entry.path().filename().string() << "| " << flowtime << endl;
+                arquivos_processados++;
+            } else {
+                cout << left << setw(30) << entry.path().filename().string() << "| ERRO DE LEITURA" << endl;
+            }
+        }
+    }
+    cout << "======================================================\n";
+    cout << "Total de arquivos processados: " << arquivos_processados << endl;
+    cout << "======================================================\n";
 
     return 0;
 }   
