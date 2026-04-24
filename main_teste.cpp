@@ -2,7 +2,6 @@
 #include <iostream>
 #include <fstream> // para ler o arquivo de arestas
     int main(){
-        setlocale(LC_ALL, "Portuguese"); //para exibir acentos corretamente no console
         
         Grafo meu_grafo(16); // 16 para comecar o id em 1 e não em 0 preservando oque foi passado no arquivo do trabalho, ou seja, o vertice 1 tem id 1 e não 0, o vertice 15 tem id 15 e não 14
 

@@ -49,8 +49,8 @@ void Grafo::caminhadaTopologica(){ //com algoritimo de kahn
 }
 
 void Grafo::imprimirCaminhoMaximo(int destino) {
-    if (destino < 0 || destino >= num_vertices) {
-        std::cout << "Destino inválido." << std::endl;
+    if (destino < 0 || destino > num_vertices) {
+        std::cout << "Destino invalido." << std::endl;
         return;
     }
 
@@ -64,7 +64,7 @@ void Grafo::imprimirCaminhoMaximo(int destino) {
 
     std::reverse(caminho.begin(), caminho.end()); // inverte o caminho para mostrar do início ao destino
 
-    std::cout << "Caminho máximo para o destino " << destino << ": ";
+    std::cout << "Caminho maximo para o destino " << destino << ": ";
     for (int vertice : caminho) {
         std::cout << vertice << " ";
     }
@@ -73,7 +73,7 @@ void Grafo::imprimirCaminhoMaximo(int destino) {
 
 void Grafo::setPeso(int idVertice, int peso) {
     if (idVertice < 1 || idVertice > num_vertices) {
-        std::cout << "ID do vértice inválido." << std::endl;
+        std::cout << "ID do vértice invalido." << std::endl;
         return;
     }
     vertices[idVertice].peso = peso;
@@ -81,7 +81,7 @@ void Grafo::setPeso(int idVertice, int peso) {
 
 int Grafo::getPeso(int idVertice) {
     if (idVertice < 1 || idVertice > num_vertices) {
-        std::cout << "ID do vértice inválido." << std::endl;
+        std::cout << "ID do vértice invalido." << std::endl;
         return 0; // Retorna um valor inválido para indicar erro
     }
     return vertices[idVertice].peso;

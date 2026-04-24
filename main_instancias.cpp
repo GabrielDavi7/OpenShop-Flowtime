@@ -18,7 +18,7 @@ int main() {
     int n = instancia.num_trabalhos;
     int m = instancia.num_maquinas;
     int total_custo = n*m; // Exemplo de cálculo do custo total, pode ser ajustado conforme necessário
-    cout << "Inicializando Grafo com " << total_custo << " vértices..." << endl;
+    cout << "Inicializando Grafo com " << total_custo << " vertices..." << endl;
 
     Grafo grafo(total_custo);
     
@@ -32,9 +32,9 @@ int main() {
         }  
     }
 
-    cout << "Sucesso! " << total_custo << " operações cadastradas no Grafo." << endl;
+    cout << "Sucesso! " << total_custo << " operacoes cadastradas no Grafo." << endl;
 
-    cout << "O tempo da última operação (Trabalho " << n-1 << ", Máquina " << m-1 << ") é: " 
+    cout << "O tempo da ultima operacao (Trabalho " << n-1 << ", Maquina " << m-1 << ") eh: " 
          << grafo.getPeso(total_custo) << endl;
     
     return 0;
