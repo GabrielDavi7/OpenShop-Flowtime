@@ -1,12 +1,12 @@
 #include <iostream>
 #include "ParserTA.hpp" 
+#include "Grafo.hpp"
 
 using namespace std;
 
 int main() {
 
     string caminhoArquivo = "Instancias/ta49Osp.psi";
-    cout << "teste de leitura da instancia do arquivo: " << caminhoArquivo << endl;
 
     Instancia instancia = ParserTA::lerArquivo(caminhoArquivo);
 
@@ -15,17 +15,27 @@ int main() {
         return 1; // Retorna um código de erro
     }
 
-    cout << "Numero de trabalhos: " << instancia.num_trabalhos << endl;
-    cout << "Numero de maquinas: " << instancia.num_maquinas << endl;
+    int n = instancia.num_trabalhos;
+    int m = instancia.num_maquinas;
+    int total_custo = n*m; // Exemplo de cálculo do custo total, pode ser ajustado conforme necessário
+    cout << "Inicializando Grafo com " << total_custo << " vértices..." << endl;
 
-    cout << "Matriz de custos:" << endl;
-    for(int i = 0; i < instancia.num_trabalhos; ++i) {
-        for(int j = 0; j < instancia.num_maquinas; ++j) {
-            cout << instancia.custos[i][j] << "\t";
-        }
-        cout << endl;
+    Grafo grafo(total_custo);
+    
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++)
+        {
+            int idVertice = (i * m) + j + 1; // Calcula o ID do vértice com base no trabalho e máquina  
+            
+            int temp = instancia.custos[i][j]; // Obtém o custo do trabalho i na máquina j
+            grafo.setPeso(idVertice,temp); // Define o peso do vértice com o custo correspondente
+        }  
     }
 
-    cout<< "teste concluido com sucesso!" << endl;
+    cout << "Sucesso! " << total_custo << " operações cadastradas no Grafo." << endl;
+
+    cout << "O tempo da última operação (Trabalho " << n-1 << ", Máquina " << m-1 << ") é: " 
+         << grafo.getPeso(total_custo) << endl;
+    
     return 0;
 }   
