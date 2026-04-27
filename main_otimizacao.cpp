@@ -26,7 +26,7 @@ int avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas,
         }
     }
 
-    // 1. Arestas Fixas de Trabalhos (Evita a trapaça do zero absoluto!)
+    // Arestas Fixas de Trabalhos (Evita a trapaça do zero absoluto!)
     // Obrigamos os trabalhos a andarem M0 -> M1 -> M2...
     // Isso transforma o problema em um Non-Permutation Flow Shop perfeito.
     for(int i=0; i < N; i++){
@@ -37,7 +37,7 @@ int avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas,
         }
     }
 
-    // 2. Arestas Dinâmicas de Máquinas (Baseadas no DNA embaralhado!)
+    // Arestas Dinâmicas de Máquinas (Baseadas no DNA embaralhado!)
     // O computador diz a ordem que cada máquina atende os clientes
     for(int j=0; j < M; j++){
         for(int i=0; i < N-1; i++){
@@ -161,7 +161,6 @@ int main() {
     cout << "\n";
 
 
-    // 2. DADOS OTIMIZADOS (10 Segundo de Busca)
     cout << "--- 2. SOLUCAO OTIMIZADA (10 SEGUNDO DE BUSCA) ---\n";
     cout << "Embaralhando filas milhares de vezes. Aguarde...\n\n";
     
