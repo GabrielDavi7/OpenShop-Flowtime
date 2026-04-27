@@ -1,16 +1,17 @@
-# Arquivos objeto (compilados intermediários)
-*.o
+# Ignora toda a pasta de executáveis e arquivos de build
+bin/
+build/
 
-# Executáveis gerados pelo Makefile
-teste_grafo
-solver_instancias
-
-# Executáveis nativos do Windows
+# Backup para executáveis que fiquem fora da pasta bin
 *.exe
+*.o
+*.out
 
-# Configurações locais
+# Configurações de IDE
 .vscode/
+.idea/
+*.swp
 
-# Arquivos temporários do Sistema Operacional
+# Arquivos do Sistema
 Thumbs.db
 .DS_Store
