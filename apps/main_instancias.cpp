@@ -1,6 +1,6 @@
 #include <iostream>
-#include "ParserTA.hpp" 
-#include "Grafo.hpp"
+#include "../include/ParserTA.hpp" 
+#include "../include/Grafo.hpp"
 #include <vector>
 #include <filesystem>
 #include <iomanip> // para usar std::setw para formatar a saída

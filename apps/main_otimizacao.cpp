@@ -4,8 +4,8 @@
 #include <random>   // Para embaralhar as filas (Busca Local)
 #include <filesystem>
 #include <iomanip>
-#include "ParserTA.hpp"
-#include "Grafo.hpp"
+#include "../include/ParserTA.hpp"
+#include "../include/Grafo.hpp"
 
 using namespace std;
 namespace fs = std::filesystem;

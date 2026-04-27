@@ -1,4 +1,5 @@
-#include "Grafo.hpp"
+#include "../include/ParserTA.hpp" 
+#include "../include/Grafo.hpp"
 #include <iostream>
 #include <fstream>
 #include <vector>

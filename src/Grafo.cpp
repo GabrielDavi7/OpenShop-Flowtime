@@ -1,4 +1,4 @@
-#include "Grafo.hpp"
+#include "../include/Grafo.hpp"
 #include <iostream>
 #include <queue> // fila para o algoritmo de ordenação topológica usando algoritmo de Kahn
 #include <algorithm> // para usar a função reverse

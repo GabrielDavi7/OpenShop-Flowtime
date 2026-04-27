@@ -1,39 +1,44 @@
-CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++17
+# Makefile para compilar os arquivos fonte do projeto OpenShop-Flowtime
+#	Comandos:
+#		"make" - compila todos os executáveis
+#		"make run_teste" - executa o programa do grafo fixo
+#		"make run_instancias" - executa o programa flowtime de instâncias
+#		"make run_otimizacao" - executa o programa de otimização
+#		"make clean" - remove a pasta bin e os executáveis
 
-TARGET_TESTE = teste_grafo.exe
-TARGET_SOLVER = solver_instancias.exe
+CXX      := g++
+CXXFLAGS := -Wall -Wextra -std=c++17 -O3
+INC      := -Iinclude
 
-OBJ_COMMON = Grafo.o
-OBJ_TESTE = main_teste.o
-OBJ_SOLVER = main_instancias.o ParserTA.o
+SRC_DIR  := src
+APP_DIR  := apps
+BIN_DIR  := bin
 
-all: teste solver
+COMMON_SRCS := $(SRC_DIR)/Grafo.cpp $(SRC_DIR)/ParserTA.cpp
 
-teste: $(OBJ_COMMON) $(OBJ_TESTE)
-	$(CXX) $(CXXFLAGS) -o $(TARGET_TESTE) $(OBJ_COMMON) $(OBJ_TESTE)
+all: $(BIN_DIR)/otimizacao.exe $(BIN_DIR)/teste.exe $(BIN_DIR)/instancias.exe
 
-solver: $(OBJ_COMMON) $(OBJ_SOLVER)
-	$(CXX) $(CXXFLAGS) -o $(TARGET_SOLVER) $(OBJ_COMMON) $(OBJ_SOLVER)
+$(BIN_DIR)/otimizacao.exe: $(APP_DIR)/main_otimizacao.cpp $(COMMON_SRCS)
+	@if not exist $(BIN_DIR) mkdir $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(INC) $^ -o $@
 
-run: teste
-	.\$(TARGET_TESTE)
+$(BIN_DIR)/teste.exe: $(APP_DIR)/main_teste.cpp $(COMMON_SRCS)
+	@if not exist $(BIN_DIR) mkdir $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(INC) $^ -o $@
 
-run_solver: solver
-	.\$(TARGET_SOLVER)
+$(BIN_DIR)/instancias.exe: $(APP_DIR)/main_instancias.cpp $(COMMON_SRCS)
+	@if not exist $(BIN_DIR) mkdir $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(INC) $^ -o $@
 
-%.o: %.cpp %.hpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+run_otimizacao: $(BIN_DIR)/otimizacao.exe
+	@.\$(BIN_DIR)\otimizacao.exe
 
-main_teste.o: main_teste.cpp
-	$(CXX) $(CXXFLAGS) -c main_teste.cpp
+run_teste: $(BIN_DIR)/teste.exe
+	@.\$(BIN_DIR)\teste.exe
 
-main_instancias.o: main_instancias.cpp
-	$(CXX) $(CXXFLAGS) -c main_instancias.cpp
-
-ParserTA.o: ParserTA.cpp ParserTA.hpp
-	$(CXX) $(CXXFLAGS) -c ParserTA.cpp
+run_instancias: $(BIN_DIR)/instancias.exe
+	@.\$(BIN_DIR)\instancias.exe
 
 clean:
-	@echo Limpando arquivos...
-	del /f /q *.o $(TARGET_TESTE) $(TARGET_SOLVER) 2>nul || rm -f *.o $(TARGET_TESTE) $(TARGET_SOLVER)
+	@if exist $(BIN_DIR) rmdir /s /q $(BIN_DIR)
+	@echo Limpeza concluida.
