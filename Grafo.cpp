@@ -18,8 +18,9 @@ void Grafo::adicionarAresta(int origem, int destino) {
     vertices[destino].grau_entrada++; // vertice de destino tem mais uma aresta apontando para ele aumenta o grau de entrada assim um job com 3 setas apontada pra ele tem grau de entrada 0+3
 }
 
-void Grafo::caminhadaTopologica(){ //com algoritimo de kahn
-    std::queue<int> fila; 
+std::vector<int> Grafo::caminhadaTopologica(){ //com algoritimo de kahn
+    std::queue<int> fila;
+    std::vector <int> ordem;
 
     for(int i=0;  i < num_vertices; i++){
         if(vertices[i].grau_entrada == 0){
@@ -31,6 +32,7 @@ void Grafo::caminhadaTopologica(){ //com algoritimo de kahn
     while(!fila.empty()){
         int atual = fila.front(); // pega o vertice da frente da fila
         fila.pop(); // remove o vertice da fila
+        ordem.push_back(atual); // adiciona o vertice na ordem topologica
 
         for(int vizinhos : vertices[atual].adjacentes){
             int tempo_passando_aqui = vertices[atual].tempo_termino + vertices[vizinhos].peso;
@@ -46,6 +48,7 @@ void Grafo::caminhadaTopologica(){ //com algoritimo de kahn
             }
         }
     }
+    return ordem;
 }
 
 void Grafo::imprimirCaminhoMaximo(int destino) {

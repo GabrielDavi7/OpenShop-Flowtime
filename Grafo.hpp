@@ -20,6 +20,7 @@ struct Vertice{
     }
 };
 
+
 class Grafo{
     public:
         int num_vertices;
@@ -27,10 +28,12 @@ class Grafo{
         
         Grafo(int n);
         void adicionarAresta(int origem, int destino);
-        void caminhadaTopologica();
+        std::vector<int> caminhadaTopologica();
         void imprimirCaminhoMaximo(int destino);
         void setPeso(int idVertice, int peso);
         int getPeso(int idVertice);
 };
+
+
 
 #endif
