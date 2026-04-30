@@ -1,24 +1,26 @@
 #include <iostream>
 #include <vector>
-#include <chrono>   // Para o cronômetro de precisão
-#include <random>   // Para embaralhar as filas (Busca Local)
+#include <chrono>
+#include <random>
 #include <filesystem>
 #include <iomanip>
+#include <algorithm>
 #include "../include/ParserTA.hpp"
 #include "../include/Grafo.hpp"
 
 using namespace std;
 namespace fs = std::filesystem;
 
-// =========================================================================
-// O JUIZ: Constrói o grafo com a ordem que o Gerador inventou e avalia
-// =========================================================================
-int avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas, Grafo& grafo_out) {
+struct Avaliacao {
+    int flowtime;
+    int makespan;
+};
+
+Avaliacao avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas, Grafo& grafo_out) { // Avalia o grafo gerado a partir da sequência de máquinas e retorna o flowtime e makespan
     int N = inst.num_trabalhos;
     int M = inst.num_maquinas;
     Grafo g(N * M);
 
-    // Injeta os pesos (Tempos das operações)
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < M; j++){
             int idVertice = (i * M) + j + 1;
@@ -26,21 +28,16 @@ int avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas,
         }
     }
 
-    // Arestas Fixas de Trabalhos (Evita a trapaça do zero absoluto!)
-    // Obrigamos os trabalhos a andarem M0 -> M1 -> M2...
-    // Isso transforma o problema em um Non-Permutation Flow Shop perfeito.
-    for(int i=0; i < N; i++){
-        for(int j=0; j < M-1; j++){
+    for(int i = 0; i < N; i++){
+        for(int j = 0; j < M - 1; j++){
             int origem = (i * M) + j + 1;
             int destino = (i * M) + j + 2;
             g.adicionarAresta(origem, destino);
         }
     }
 
-    // Arestas Dinâmicas de Máquinas (Baseadas no DNA embaralhado!)
-    // O computador diz a ordem que cada máquina atende os clientes
-    for(int j=0; j < M; j++){
-        for(int i=0; i < N-1; i++){
+    for(int j = 0; j < M; j++){
+        for(int i = 0; i < N - 1; i++){
             int trabalho_atual = seq_maquinas[j][i];
             int trabalho_prox = seq_maquinas[j][i+1];
             int origem = (trabalho_atual * M) + j + 1;
@@ -52,134 +49,181 @@ int avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas,
     g.caminhadaTopologica();
 
     int flowtime = 0;
-    for(int i=0; i < N; i++){
+    int makespan = 0;
+    for(int i = 0; i < N; i++){
         int idUltimaOperacao = (i * M) + M;
-        flowtime += g.vertices[idUltimaOperacao].tempo_termino;
+        int tempo_final = g.vertices[idUltimaOperacao].tempo_termino;
+        flowtime += tempo_final;
+        if(tempo_final > makespan) {
+            makespan = tempo_final;
+        }
     }
 
-    grafo_out = g; // Guarda o grafo processado
-    return flowtime;
+    grafo_out = g;
+    return {flowtime, makespan};
 }
 
-// Estrutura para facilitar o retorno das duas coisas juntas
 struct Resultado {
     int flowtime;
+    int makespan;
     Grafo grafo;
 };
 
-// =========================================================================
-// O GERADOR: Faz a Busca Local usando SWAP Aleatório por X segundos
-// =========================================================================
-Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) {
+Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) { // Otimiza a sequência de máquinas usando uma busca local do tipo VNS e retorna o melhor flowtime, makespan e grafo encontrado
     int N = inst.num_trabalhos;
     int M = inst.num_maquinas;
 
-    // Cria a Solução Inicial (Baseline: 0, 1, 2...)
     vector<vector<int>> melhor_seq(M, vector<int>(N));
-    for(int j=0; j<M; j++) {
-        for(int i=0; i<N; i++) melhor_seq[j][i] = i;
+    for(int j = 0; j < M; j++) {
+        for(int i = 0; i < N; i++) melhor_seq[j][i] = i;
     }
 
     Grafo melhor_grafo(N * M);
-    int melhor_flowtime = avaliarGrafo(inst, melhor_seq, melhor_grafo);
+    Avaliacao aval_inicial = avaliarGrafo(inst, melhor_seq, melhor_grafo);
+    
+    int melhor_flowtime = aval_inicial.flowtime;
+    int melhor_makespan = aval_inicial.makespan;
 
-    // Preparando o motor de aleatoriedade
+    int global_flowtime = melhor_flowtime;
+    int global_makespan = melhor_makespan;
+    vector<vector<int>> global_seq = melhor_seq;
+    Grafo global_grafo = melhor_grafo;
+
     random_device rd;
     mt19937 gerador(rd());
     uniform_int_distribution<int> dist_maquina(0, M - 1);
     uniform_int_distribution<int> dist_trabalho(0, N - 1);
 
-    // DISPARA O CRONÔMETRO!
+    int k = 1;
+    int k_max = 10;
+    int paciencia = 0;
+    int max_paciencia = 10000;
+
     auto inicio = chrono::high_resolution_clock::now();
-    int iteracoes = 0;
 
     while(true) {
         auto agora = chrono::high_resolution_clock::now();
         chrono::duration<double> tempo_passado = agora - inicio;
         
-        // Verifica se o tempo acabou
         if(tempo_passado.count() > tempo_limite_seg) break;
 
-        // Pega a nossa melhor fábrica até agora e faz uma Mutação nela
         vector<vector<int>> nova_seq = melhor_seq;
         
-        // MUTAÇÃO AGRESSIVA: 3 trocas seguidas para "pular" o morro
-        for(int s = 0; s < 3; s++) {
+        for(int s = 0; s < k; s++) {
             int m_rand = dist_maquina(gerador); 
             int p1 = dist_trabalho(gerador);    
             int p2 = dist_trabalho(gerador);    
             swap(nova_seq[m_rand][p1], nova_seq[m_rand][p2]); 
         }
 
-        // Manda pro juiz avaliar a mutação
         Grafo grafo_teste(N * M);
-        int flowtime_teste = avaliarGrafo(inst, nova_seq, grafo_teste);
+        Avaliacao aval_teste = avaliarGrafo(inst, nova_seq, grafo_teste);
 
-        // Se o tempo diminuiu ou empatou, achamos um caminho melhor!
-        if(flowtime_teste <= melhor_flowtime) {
-            melhor_flowtime = flowtime_teste;
+        if(aval_teste.flowtime < melhor_flowtime) { 
+            melhor_flowtime = aval_teste.flowtime;
+            melhor_makespan = aval_teste.makespan;
             melhor_seq = nova_seq;
             melhor_grafo = grafo_teste;
+            k = 1; 
+            paciencia = 0;
+
+            if (melhor_flowtime < global_flowtime) {
+                global_flowtime = melhor_flowtime;
+                global_makespan = melhor_makespan;
+                global_seq = melhor_seq;
+                global_grafo = melhor_grafo;
+            }
+        } 
+        else if (aval_teste.flowtime == melhor_flowtime) {
+            melhor_seq = nova_seq;
+            melhor_grafo = grafo_teste;
+            melhor_makespan = aval_teste.makespan;
+            k++;
+            paciencia++;
+        } 
+        else {
+            k++;
+            paciencia++;
         }
-        iteracoes++;
+
+        if (k > k_max) k = 1;
+
+        if (paciencia > max_paciencia) {
+            for(int j = 0; j < M; j++) {
+                std::shuffle(melhor_seq[j].begin(), melhor_seq[j].end(), gerador);
+            }
+            Avaliacao aval_reset = avaliarGrafo(inst, melhor_seq, melhor_grafo);
+            melhor_flowtime = aval_reset.flowtime;
+            melhor_makespan = aval_reset.makespan;
+            k = 1;
+            paciencia = 0;
+        }
     }
     
-    return {melhor_flowtime, melhor_grafo};
+    return {global_flowtime, global_makespan, global_grafo};
 }
 
-int main() {
+int main() { // Função principal que coordena o processamento em lote das instâncias
     setlocale(LC_ALL, "C");
 
-    string arquivo_ta01 = "instancias/ta01Osp.psi";
-    if(!fs::exists(arquivo_ta01)) {
-        cout << "Nao achei a instancia ta01!" << endl;
+    string caminhoPasta = "instancias/"; 
+    
+    if(!fs::exists(caminhoPasta) || !fs::is_directory(caminhoPasta)) {
+        cout << "A pasta '" << caminhoPasta << "' nao existe ou nao e um diretorio." << endl;
         return 1;
     }
 
-    Instancia inst = ParserTA::lerArquivo(arquivo_ta01);
+    double tempo_por_instancia = 20.0; 
 
-    cout << "\n======================================================\n";
-    cout << "     COMPARACAO: BASELINE VS BUSCA LOCAL (TA01)       \n";
-    cout << "======================================================\n\n";
+    cout << "\n" << string(95, '=') << "\n";
+    cout << "      PROCESSAMENTO EM LOTE - META-HEURISTICA VNS (" << tempo_por_instancia << "s/arq)      \n";
+    cout << string(95, '=') << "\n";
+    cout << left << setw(18) << "Instancia" 
+         << "| " << setw(11) << "FT Base" 
+         << "| " << setw(11) << "FT Otim" 
+         << "| " << setw(14) << "Melhoria FT"
+         << "| " << setw(11) << "MS Base"
+         << "| " << "MS Otim\n";
+    cout << string(95, '-') << "\n";
 
-    // 1. DADOS DO BASELINE (Fila Indiana sem otimização)
-    cout << "--- 1. SOLUCAO INICIAL (BASELINE) ---\n";
-    Grafo grafo_base(1);
-    vector<vector<int>> seq_base(inst.num_maquinas, vector<int>(inst.num_trabalhos));
-    for(int j=0; j<inst.num_maquinas; j++) for(int i=0; i<inst.num_trabalhos; i++) seq_base[j][i] = i;
-    
-    int flowtime_base = avaliarGrafo(inst, seq_base, grafo_base);
-    
-    cout << "Flowtime Inicial: " << flowtime_base << "\n";
-    cout << "Ordem (Top 20): ";
-    vector<int> ordem_base = grafo_base.caminhadaTopologica();
-    for(size_t i=0; i < min(ordem_base.size(), (size_t)20); i++) cout << ordem_base[i] << " ";
-    cout << "...\n";
-    
-    int ultima_op_base = (inst.num_trabalhos * inst.num_maquinas); // Última do último trabalho
-    grafo_base.imprimirCaminhoMaximo(ultima_op_base);
-    cout << "\n";
+    int arquivos_processados = 0;
 
+    for(const auto& entry: fs::directory_iterator(caminhoPasta)) {
+        if(entry.is_regular_file()) {
+            string caminhoArquivo = entry.path().string();
+            string nomeArquivo = entry.path().filename().string();
+            
+            Instancia inst = ParserTA::lerArquivo(caminhoArquivo);
+            if(inst.num_trabalhos == 0 || inst.num_maquinas == 0) {
+                cout << left << setw(18) << nomeArquivo << "| ERRO DE LEITURA\n";
+                continue;
+            }
 
-    cout << "--- 2. SOLUCAO OTIMIZADA (10 SEGUNDO DE BUSCA) ---\n";
-    cout << "Embaralhando filas milhares de vezes. Aguarde...\n\n";
-    
-    // Passa 10.0 segundo de limite
-    Resultado res_otimizado = otimizarBuscaLocal(inst, 10.0); 
-    
-    cout << "Flowtime Otimizado: " << res_otimizado.flowtime << "\n";
-    
-    // Calcula a porcentagem de melhoria
-    double melhoria = 100.0 - ((double)res_otimizado.flowtime / flowtime_base) * 100.0;
-    cout << "Melhoria do Sistema: -" << fixed << setprecision(2) << melhoria << "%\n";
+            vector<vector<int>> seq_base(inst.num_maquinas, vector<int>(inst.num_trabalhos));
+            for(int j = 0; j < inst.num_maquinas; j++) {
+                for(int i = 0; i < inst.num_trabalhos; i++) seq_base[j][i] = i;
+            }
+            Grafo grafo_base(1); 
+            Avaliacao aval_base = avaliarGrafo(inst, seq_base, grafo_base);
 
-    cout << "Nova Ordem Otimizada (Top 20): ";
-    vector<int> nova_ordem = res_otimizado.grafo.caminhadaTopologica();
-    for(size_t i=0; i < min(nova_ordem.size(), (size_t)20); i++) cout << nova_ordem[i] << " ";
-    cout << "...\n";
+            Resultado res_otimizado = otimizarBuscaLocal(inst, tempo_por_instancia);
 
-    res_otimizado.grafo.imprimirCaminhoMaximo(ultima_op_base);
-    cout << "\n======================================================\n";
+            double melhoria = 100.0 - ((double)res_otimizado.flowtime / aval_base.flowtime) * 100.0;
+
+            cout << left << setw(18) << nomeArquivo 
+                 << "| " << setw(11) << aval_base.flowtime 
+                 << "| " << setw(11) << res_otimizado.flowtime 
+                 << "| -" << fixed << setprecision(2) << setw(11) << melhoria << "%" 
+                 << "| " << setw(11) << aval_base.makespan
+                 << "| " << res_otimizado.makespan << "\n";
+
+            arquivos_processados++;
+        }
+    }
+    
+    cout << string(95, '=') << "\n";
+    cout << "Total de arquivos processados: " << arquivos_processados << endl;
+    cout << string(95, '=') << "\n";
 
     return 0;
 }
