@@ -71,7 +71,8 @@ void Grafo::imprimirCaminhoMaximo(int destino) {
     for (int vertice : caminho) {
         std::cout << vertice << " ";
     }
-    std::cout << "\nTempo total: " << vertices[destino].tempo_termino << std::endl; // imprime o tempo total para chegar no destino
+    std::cout << "\nTempo total (contando vertices): " << vertices[destino].tempo_termino << std::endl; // o tempo total é o tempo de termino do destino, que já conta o peso do destino, ou seja, o tempo de processamento da ultima maquina do job
+    std::cout << "Tempo total (contando arestas): " << (vertices[destino].tempo_termino - 1) << std::endl; // o tempo total contando arestas é o tempo total contando vertices menos 1, pois o tempo de termino do destino conta o peso do destino, ou seja, o tempo de processamento da ultima maquina do job, e para contar apenas as arestas, devemos subtrair esse peso
 }
 
 void Grafo::setPeso(int idVertice, int peso) {
