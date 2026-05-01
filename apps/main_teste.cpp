@@ -8,9 +8,9 @@ int main(){
     
     Grafo meu_grafo(16); // 16 para comecar o id em 1 e não em 0
 
-    // CORREÇÃO 1: i <= 15 (para incluir o vértice 15 no peso)
+
     for(int i = 1; i <= 15; i++){
-        meu_grafo.vertices[i].peso = 1;
+        meu_grafo.vertices[i].peso = 1; // Definindo o peso de cada vértice como 1
     }
 
     std::ifstream arquivo_arestas("grafo_fixo.txt"); 
