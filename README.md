@@ -79,6 +79,14 @@ Executa o algoritmo que mostra a diferença de caminho entre baseline e VSN.
 make run_caminho
 ```
 
+#### Executar o específico
+Executar teste específico (Instância Individual)
+
+```bash
+make run_especifico
+# Ou via executável direto: .\bin\especifico.exe instancias/ta31Osp.psi 120 //escolha instancia e tempo
+```
+
 #### Limpar arquivos gerados
 
 ```bash
