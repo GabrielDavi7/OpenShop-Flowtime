@@ -8,6 +8,9 @@
 #include "../include/ParserTA.hpp"
 #include "../include/Grafo.hpp"
 
+#include <thread>
+#include <mutex>
+
 using namespace std;
 namespace fs = std::filesystem;
 
@@ -16,7 +19,7 @@ struct Avaliacao {
     int makespan;
 };
 
-Avaliacao avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas, Grafo& grafo_out) { // Avalia o grafo gerado a partir da sequência de máquinas e retorna o flowtime e makespan
+Avaliacao avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas, Grafo& grafo_out) { 
     int N = inst.num_trabalhos;
     int M = inst.num_maquinas;
     Grafo g(N * M);
@@ -69,101 +72,176 @@ struct Resultado {
     Grafo grafo;
 };
 
-Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) { // Otimiza a sequência de máquinas usando uma busca local do tipo VNS e retorna o melhor flowtime, makespan e grafo encontrado
+Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) { 
     int N = inst.num_trabalhos;
     int M = inst.num_maquinas;
 
-    vector<vector<int>> melhor_seq(M, vector<int>(N));
+    vector<pair<int, int>> custo_jobs(N);
+    for(int i = 0; i < N; i++) {
+        custo_jobs[i].first = i;
+        custo_jobs[i].second = 0;
+        for(int j = 0; j < M; j++) custo_jobs[i].second += inst.custos[i][j];
+    }
+    sort(custo_jobs.begin(), custo_jobs.end(), [](const pair<int, int>& a, const pair<int, int>& b) {
+        return a.second < b.second;
+    });
+
+    vector<vector<int>> seq_spt(M, vector<int>(N));
+    vector<vector<int>> seq_burra(M, vector<int>(N));
     for(int j = 0; j < M; j++) {
-        for(int i = 0; i < N; i++) melhor_seq[j][i] = i;
+        for(int i = 0; i < N; i++) {
+            seq_spt[j][i] = custo_jobs[i].first;
+            seq_burra[j][i] = i;
+        }
     }
 
-    Grafo melhor_grafo(N * M);
-    Avaliacao aval_inicial = avaliarGrafo(inst, melhor_seq, melhor_grafo);
-    
-    int melhor_flowtime = aval_inicial.flowtime;
-    int melhor_makespan = aval_inicial.makespan;
+    Grafo grafo_spt(N * M);
+    Avaliacao aval_spt = avaliarGrafo(inst, seq_spt, grafo_spt);
+    Grafo grafo_burro(N * M);
+    Avaliacao aval_burra = avaliarGrafo(inst, seq_burra, grafo_burro);
 
-    int global_flowtime = melhor_flowtime;
-    int global_makespan = melhor_makespan;
-    vector<vector<int>> global_seq = melhor_seq;
-    Grafo global_grafo = melhor_grafo;
+    vector<vector<int>> global_seq;
+    int global_flowtime, global_makespan;
+    Grafo global_grafo(N * M);
+
+    if (aval_burra.flowtime < aval_spt.flowtime) {
+        global_seq = seq_burra;
+        global_flowtime = aval_burra.flowtime;
+        global_makespan = aval_burra.makespan;
+        global_grafo = grafo_burro;
+    } else {
+        global_seq = seq_spt;
+        global_flowtime = aval_spt.flowtime;
+        global_makespan = aval_spt.makespan;
+        global_grafo = grafo_spt;
+    }
+
 
     random_device rd;
     mt19937 gerador(rd());
     uniform_int_distribution<int> dist_maquina(0, M - 1);
     uniform_int_distribution<int> dist_trabalho(0, N - 1);
+    uniform_real_distribution<double> dist_prob(0.0, 1.0);
 
-    int k = 1;
-    int k_max = 10;
+    vector<vector<int>> matriz_tabu(N, vector<int>(N, 0));
+    int iteracao_atual = 0;
+    int tabu_tenure = max(5, N / 2);
+
+    int num_threads = thread::hardware_concurrency(); 
+    if (num_threads == 0) num_threads = 12; 
+    int num_vizinhos = 100; 
+
+    struct Vizinho {
+        vector<vector<int>> seq;
+        int job1, job2;
+        int flowtime;
+        int makespan;
+        Grafo grafo = Grafo(0);
+    };
+
+    vector<vector<int>> seq_atual = global_seq; // Inicia a busca a partir da melhor inicial
     int paciencia = 0;
-    int max_paciencia = 10000;
+    int max_paciencia = 500; 
 
     auto inicio = chrono::high_resolution_clock::now();
 
     while(true) {
         auto agora = chrono::high_resolution_clock::now();
         chrono::duration<double> tempo_passado = agora - inicio;
-        
         if(tempo_passado.count() > tempo_limite_seg) break;
 
-        vector<vector<int>> nova_seq = melhor_seq;
-        
-        for(int s = 0; s < k; s++) {
+        if (paciencia > max_paciencia) {
+            for(int j = 0; j < M; j++) shuffle(seq_atual[j].begin(), seq_atual[j].end(), gerador);
+            for(int r = 0; r < N; r++) fill(matriz_tabu[r].begin(), matriz_tabu[r].end(), 0);
+            paciencia = 0;
+        }
+
+        vector<Vizinho> vizinhanca(num_vizinhos);
+        for(int i = 0; i < num_vizinhos; i++) {
+            vizinhanca[i].seq = seq_atual;
             int m_rand = dist_maquina(gerador); 
             int p1 = dist_trabalho(gerador);    
-            int p2 = dist_trabalho(gerador);    
-            swap(nova_seq[m_rand][p1], nova_seq[m_rand][p2]); 
-        }
+            int p2 = dist_trabalho(gerador);
+            while(p1 == p2) p2 = dist_trabalho(gerador);
 
-        Grafo grafo_teste(N * M);
-        Avaliacao aval_teste = avaliarGrafo(inst, nova_seq, grafo_teste);
+            vizinhanca[i].job1 = vizinhanca[i].seq[m_rand][p1];
+            vizinhanca[i].job2 = vizinhanca[i].seq[m_rand][p2];
 
-        if(aval_teste.flowtime < melhor_flowtime) { 
-            melhor_flowtime = aval_teste.flowtime;
-            melhor_makespan = aval_teste.makespan;
-            melhor_seq = nova_seq;
-            melhor_grafo = grafo_teste;
-            k = 1; 
-            paciencia = 0;
-
-            if (melhor_flowtime < global_flowtime) {
-                global_flowtime = melhor_flowtime;
-                global_makespan = melhor_makespan;
-                global_seq = melhor_seq;
-                global_grafo = melhor_grafo;
+            if (dist_prob(gerador) < 0.5) {
+                swap(vizinhanca[i].seq[m_rand][p1], vizinhanca[i].seq[m_rand][p2]); 
+            } else {
+                int job = vizinhanca[i].seq[m_rand][p1];
+                vizinhanca[i].seq[m_rand].erase(vizinhanca[i].seq[m_rand].begin() + p1);
+                vizinhanca[i].seq[m_rand].insert(vizinhanca[i].seq[m_rand].begin() + p2, job);
             }
-        } 
-        else if (aval_teste.flowtime == melhor_flowtime) {
-            melhor_seq = nova_seq;
-            melhor_grafo = grafo_teste;
-            melhor_makespan = aval_teste.makespan;
-            k++;
-            paciencia++;
-        } 
-        else {
-            k++;
-            paciencia++;
         }
 
-        if (k > k_max) k = 1;
+        vector<thread> threads;
+        int chunk = num_vizinhos / num_threads;
 
-        if (paciencia > max_paciencia) {
-            for(int j = 0; j < M; j++) {
-                std::shuffle(melhor_seq[j].begin(), melhor_seq[j].end(), gerador);
+        for(int t = 0; t < num_threads; t++) {
+            threads.emplace_back([&, t]() {
+                int inicio_chunk = t * chunk;
+                int fim_chunk = (t == num_threads - 1) ? num_vizinhos : (t + 1) * chunk;
+                
+                for(int i = inicio_chunk; i < fim_chunk; i++) {
+                    vizinhanca[i].grafo = Grafo(N * M);
+                    Avaliacao aval = avaliarGrafo(inst, vizinhanca[i].seq, vizinhanca[i].grafo);
+                    vizinhanca[i].flowtime = aval.flowtime;
+                    vizinhanca[i].makespan = aval.makespan;
+                }
+            });
+        }
+        
+        for(auto& th : threads) th.join();
+
+        int melhor_idx = -1;
+        int melhor_ft_vizinhanca = 2147483647; 
+
+        for(int i = 0; i < num_vizinhos; i++) {
+            int j1 = vizinhanca[i].job1;
+            int j2 = vizinhanca[i].job2;
+            
+            bool is_tabu = (matriz_tabu[j1][j2] > iteracao_atual || matriz_tabu[j2][j1] > iteracao_atual);
+
+            if (is_tabu && vizinhanca[i].flowtime < global_flowtime) {
+                is_tabu = false; 
             }
-            Avaliacao aval_reset = avaliarGrafo(inst, melhor_seq, melhor_grafo);
-            melhor_flowtime = aval_reset.flowtime;
-            melhor_makespan = aval_reset.makespan;
-            k = 1;
-            paciencia = 0;
+
+            if (!is_tabu && vizinhanca[i].flowtime < melhor_ft_vizinhanca) {
+                melhor_ft_vizinhanca = vizinhanca[i].flowtime;
+                melhor_idx = i;
+            }
         }
+
+        if (melhor_idx != -1) {
+            seq_atual = vizinhanca[melhor_idx].seq;
+            int j1 = vizinhanca[melhor_idx].job1;
+            int j2 = vizinhanca[melhor_idx].job2;
+            
+            matriz_tabu[j1][j2] = iteracao_atual + tabu_tenure;
+            matriz_tabu[j2][j1] = iteracao_atual + tabu_tenure;
+
+            if (melhor_ft_vizinhanca < global_flowtime) {
+                global_flowtime = vizinhanca[melhor_idx].flowtime;
+                global_makespan = vizinhanca[melhor_idx].makespan;
+                global_seq = vizinhanca[melhor_idx].seq;
+                global_grafo = vizinhanca[melhor_idx].grafo;
+                paciencia = 0;
+            } else {
+                paciencia++;
+            }
+        } else {
+            paciencia++;
+        }
+
+        iteracao_atual++;
     }
     
     return {global_flowtime, global_makespan, global_grafo};
 }
 
-int main() { // Função principal que coordena o processamento em lote das instâncias
+int main() { 
     setlocale(LC_ALL, "C");
 
     string caminhoPasta = "instancias/"; 
@@ -173,10 +251,10 @@ int main() { // Função principal que coordena o processamento em lote das inst
         return 1;
     }
 
-    double tempo_por_instancia = 20.0; 
+    double tempo_por_instancia = 60.0; 
 
     cout << "\n" << string(95, '=') << "\n";
-    cout << "      PROCESSAMENTO EM LOTE - META-HEURISTICA VNS (" << tempo_por_instancia << "s/arq)      \n";
+    cout << "      PROCESSAMENTO EM LOTE - BUSCA TABU PARALELA (" << tempo_por_instancia << "s/arq)      \n";
     cout << string(95, '=') << "\n";
     cout << left << setw(18) << "Instancia" 
          << "| " << setw(11) << "FT Base" 

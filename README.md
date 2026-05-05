@@ -1,165 +1,99 @@
-# 🧩 Open Shop Scheduling: Flowtime Optimizer
+# 🧩 Open Shop Scheduling: Parallel Flowtime Optimizer
 
-Este projeto consiste em uma ferramenta de **simulação e otimização** para o problema de escalonamento **Open Shop**, com foco na **minimização do Flowtime** (tempo total de permanência dos trabalhos no sistema).
+Este projeto implementa um motor de otimização para o problema de escalonamento **Open Shop Scheduling Problem (OSSP)**, com foco na minimização do **Flowtime total (∑Cj)**.
 
-A solução utiliza **Teoria dos Grafos** para representar dependências entre operações e aplica uma **meta-heurística de Busca Local** para encontrar soluções melhores.
+A solução utiliza uma arquitetura híbrida de metaheurísticas com execução paralela para explorar eficientemente o espaço de soluções em instâncias de médio e grande porte.
 
 ---
 
-## 🚀 Tecnologias e Conceitos
+## 🎯 Problema
+
+O Open Shop Scheduling consiste em um conjunto de jobs que devem ser processados em múltiplas máquinas, respeitando a restrição de que cada job executa cada operação exatamente uma vez, sem sobreposição em máquinas ou jobs.
+
+O objetivo deste projeto é minimizar o **tempo total de conclusão (Flowtime)**.
+
+---
+
+## 🚀 Tecnologias e Arquitetura
 
 - **Linguagem:** C++17
-- **Representação:** Grafos Acíclicos Dirigidos (DAG)
-- **Algoritmo Base:** Ordenação Topológica (Algoritmo de Kahn)
-- **Otimização:** Meta-Heurística Híbrida (VNS - Variable Neighborhood Search + Multi-Start)
-- **Build System:** Makefile (compatível com Windows e Linux)
+- **Paralelismo:** `std::thread` (multi-core CPU)
+- **Otimização:** Busca Tabu Paralela + Variable Neighborhood Search (VNS)
+- **Estrutura de dados:** Grafos direcionados acíclicos (DAG)
+- **Ordenação:** Algoritmo de Kahn (topological sort)
+- **Build System:** Makefile com otimizações `-O3 -pthread`
 
 ---
 
-## 📂 Estrutura do Projeto
+## 🧠 Estratégia de Otimização
 
-```
+O sistema é baseado em uma abordagem híbrida de metaheurísticas:
+
+### 1. Inicialização (Baseline + SPT)
+
+O algoritmo inicia a busca a partir de duas soluções:
+
+- Sequência original do problema
+- Heurística SPT (Shortest Processing Time)
+
+A melhor solução entre as duas é escolhida como ponto inicial.
+
+---
+
+### 2. Busca Local Paralela
+
+A vizinhança é gerada por:
+
+- swaps entre tarefas
+- inserções
+
+A avaliação dos vizinhos é distribuída entre múltiplas threads, explorando o hardware disponível.
+
+---
+
+### 3. Busca Tabu
+
+É utilizada uma estrutura de memória de curto prazo (matriz tabu) para:
+
+- evitar ciclos
+- impedir revisitação de soluções recentes
+
+---
+
+### 4. Critério de Aspiração
+
+Movimentos proibidos pela lista tabu podem ser aceitos caso produzam:
+
+- melhoria global do Flowtime
+
+---
+
+### 5. Diversificação (VNS)
+
+Quando ocorre estagnação:
+
+- aplica-se perturbação na solução atual (shuffle)
+- a lista tabu é reinicializada
+- a busca é reiniciada em nova região do espaço de soluções
+
+---
+
+## 📊 Comportamento Observado
+
+- Em instâncias pequenas e médias (ex: Taillard inicial), o algoritmo converge rapidamente para soluções estáveis.
+- Em instâncias maiores, o sistema mantém melhoria incremental ao longo do tempo de execução.
+- A paralelização aumenta significativamente a taxa de exploração do espaço de busca.
+
+---
+
+## 🏗️ Estrutura do Projeto
+
+```bash
 OpenShop-Flowtime/
-├── include/        # Arquivos de cabeçalho (.hpp)
-├── src/            # Implementação de grafos e parser (.cpp)
-├── apps/           # Programas principais (otimização, testes, baseline)
-├── instancias/     # Arquivos de entrada (.psi) - instâncias de Taillard
-├── bin/            # Executáveis gerados
-└── Makefile        # Script de compilação
+├── include/        # Headers (.hpp)
+├── src/            # Implementação principal (grafos, parser)
+├── apps/           # Executáveis (otimização, testes)
+├── instancias/     # Instâncias Taillard (.psi)
+├── bin/            # Binários gerados
+└── Makefile        # Sistema de build
 ```
-
----
-
-## 🛠️ Como Compilar e Executar
-
-### ✅ Pré-requisitos
-
-- Compilador **g++** com suporte a C++17
-- Ferramenta **make**
-
----
-
-### 🔧 Comandos
-
-#### Compilar o projeto
-
-```bash
-make
-```
-
-#### Executar Grafo Fixo
-
-Teste Grafo Fixo
-
-```bash
-make run_teste
-```
-
-#### Executar processamento em lote (Baseline)
-
-Calcula o Flowtime inicial para todas as instâncias.
-
-```bash
-make run_instancias
-```
-
-#### Executar a otimização (Busca Local)
-
-Executa o algoritmo que tenta melhorar o Flowtime inicial.
-
-```bash
-make run_otimizacao
-```
-
-#### Executar o caminho
-
-Executa o algoritmo que mostra a diferença de caminho entre baseline e VSN.
-
-```bash
-make run_caminho
-```
-
-#### Executar o específico
-Executar teste específico (Instância Individual)
-
-```bash
-make run_especifico
-# Ou via executável direto: .\bin\especifico.exe instancias/ta31Osp.psi 120 //escolha instancia e tempo
-```
-
-#### Limpar arquivos gerados
-
-```bash
-make clean
-```
-
----
-
-## 🧠 Algoritmo de Otimização
-
-O sistema evoluiu para uma **Meta-Heurística Híbrida**, combinando **Variable Neighborhood Search (VNS)** com um mecanismo de **Multi-Start**, estruturado da seguinte forma:
-
-1. **Baseline e Memória Global:**
-   Geração de uma solução inicial sequencial. Esse primeiro resultado é salvo em uma "Memória Global" blindada para garantir que o recorde absoluto nunca seja perdido.
-
-2. **Perturbação Dinâmica (VNS):**
-   Realização de trocas aleatórias (_swaps_) na ordem de execução. A intensidade das trocas (fator `k`) é adaptativa: começa leve para refinamento local e aumenta gradativamente de força para conseguir "pular" para fora de platôs e Ótimos Locais.
-
-3. **Avaliação (O Juiz):**
-   - Construção de um grafo de dependências (arestas fixas de operações + arestas dinâmicas das máquinas).
-   - Aplicação do Algoritmo de Kahn (Ordenação Topológica).
-   - Cálculo do **Flowtime** (objetivo primário) e do **Makespan** (gargalo de fábrica).
-
-4. **Aceitação e Refinamento:**
-   Se a nova solução reduz o Flowtime (ou empata, para permitir navegação em platôs), ela substitui a atual e a força do pulo (`k`) volta a ser 1. Se quebrar o recorde absoluto, a Memória Global é atualizada.
-
-5. **Fuga de Estagnação (Multi-Start):**
-   Caso o algoritmo atinja um limite de "paciência" (10.000 tentativas sem melhoria), as filas de todas as máquinas sofrem um embaralhamento total (_Shuffle_). Isso reinicia a busca em uma área completamente inexplorada do problema, impedindo que o algoritmo fique travado.
-
----
-
-## 🔄 Evolução e Impacto da Atualização
-
-Durante as análises de desempenho da primeira versão (baseada em _Hill Climbing_ com _3-Swap_ fixo), observou-se que o algoritmo estagnava rapidamente em instâncias médias (como a `ta05`), caindo em armadilhas matemáticas conhecidas como **Ótimos Locais**.
-
-Para contornar esse problema e exaurir as possibilidades do espaço de busca, o motor de otimização foi reescrito, o que trouxe resultados drásticos e reestruturou a forma como a Inteligência Artificial lida com o problema de roteamento do _Open Shop_:
-
-- **Quebra de Platôs:** Instâncias que antes apresentavam 0.00% de melhoria tiveram o bloqueio quebrado, apresentando reduções sólidas de tempo.
-- **Redução Massiva:** Em instâncias como a `ta10` e `ta20`, as melhorias de Flowtime saltaram de valores singelos para reduções robustas entre **15% e 20%**.
-- **Reestruturação do Gargalo (Caminho Crítico):** Os logs comprovam que o VNS não apenas ajusta os tempos, mas altera estruturalmente o Caminho Crítico da fábrica. A IA descentraliza o trabalho, mudando completamente qual máquina atua como o gargalo final (Makespan) para otimizar o fluxo geral.
-
----
-
-## 📊 Resultados Obtidos
-
-Teste realizado com a instância **ta01Osp.psi** durante **10 segundos**:
-
-| Métrica  | Valor Inicial | Valor Otimizado |
-| -------- | ------------- | --------------- |
-| Flowtime | 1043          | 958             |
-| Makespan | 352           | 267             |
-
-### 📈 Melhorias
-
-- **Redução do Flowtime:** ~8.15%
-- **Redução do Makespan:** significativa
-
----
-
-## 📌 Observações
-
-- O desempenho depende do tempo de execução da busca local (Alguns casos tempo maior não significa melhoria, por exemplo na instancia 01 onde 10 segundos ja achou o resultado "Ótimo Local (ou Local Optimum).")
-- Estratégias mais avançadas (Simulated Annealing, Tabu Search) podem melhorar ainda mais os resultados
-- O projeto é modular e permite fácil extensão
-
----
-
-## 👨‍💻 Autor
-
-Desenvolvido como projeto acadêmico utilizando conceitos de:
-
-- Escalonamento de tarefas
-- Teoria dos grafos
-- Otimização heurística
-
----

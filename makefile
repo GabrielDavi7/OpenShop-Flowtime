@@ -8,7 +8,8 @@
 #       "make clean" - remove a pasta bin e os executáveis
 
 CXX      := g++
-CXXFLAGS := -Wall -Wextra -std=c++17 -O3
+# Adicionado -pthread para suporte a threads e -O3 para otimização máxima
+CXXFLAGS := -Wall -Wextra -std=c++17 -O3 -pthread
 INC      := -Iinclude
 
 SRC_DIR  := src

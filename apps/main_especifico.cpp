@@ -74,38 +74,73 @@ Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) {
     int N = inst.num_trabalhos;
     int M = inst.num_maquinas;
 
-    vector<vector<int>> melhor_seq(M, vector<int>(N));
+
+    vector<pair<int, int>> custo_jobs(N);
+    for(int i = 0; i < N; i++) {
+        custo_jobs[i].first = i;
+        custo_jobs[i].second = 0;
+        for(int j = 0; j < M; j++) custo_jobs[i].second += inst.custos[i][j];
+    }
+    sort(custo_jobs.begin(), custo_jobs.end(), [](const pair<int, int>& a, const pair<int, int>& b) {
+        return a.second < b.second;
+    });
+
+    vector<vector<int>> seq_spt(M, vector<int>(N));
     for(int j = 0; j < M; j++) {
-        for(int i = 0; i < N; i++) melhor_seq[j][i] = i;
+        for(int i = 0; i < N; i++) seq_spt[j][i] = custo_jobs[i].first;
     }
 
-    Grafo melhor_grafo(N * M);
-    Avaliacao aval_inicial = avaliarGrafo(inst, melhor_seq, melhor_grafo);
-    
-    int melhor_flowtime = aval_inicial.flowtime;
-    int melhor_makespan = aval_inicial.makespan;
 
+    vector<vector<int>> seq_burra(M, vector<int>(N));
+    for(int j = 0; j < M; j++) {
+        for(int i = 0; i < N; i++) seq_burra[j][i] = i;
+    }
+
+    Grafo grafo_spt(N * M);
+    Avaliacao aval_spt = avaliarGrafo(inst, seq_spt, grafo_spt);
+    
+    Grafo grafo_burro(N * M);
+    Avaliacao aval_burra = avaliarGrafo(inst, seq_burra, grafo_burro);
+
+    vector<vector<int>> melhor_seq;
+    int melhor_flowtime, melhor_makespan;
+    Grafo melhor_grafo(N * M);
+
+    if (aval_burra.flowtime < aval_spt.flowtime) {
+        melhor_seq = seq_burra;
+        melhor_flowtime = aval_burra.flowtime;
+        melhor_makespan = aval_burra.makespan;
+        melhor_grafo = grafo_burro;
+    } else {
+        melhor_seq = seq_spt;
+        melhor_flowtime = aval_spt.flowtime;
+        melhor_makespan = aval_spt.makespan;
+        melhor_grafo = grafo_spt;
+    }
+
+    // Variáveis globais para rastrear o melhor absoluto encontrado no tempo
     int global_flowtime = melhor_flowtime;
     int global_makespan = melhor_makespan;
     vector<vector<int>> global_seq = melhor_seq;
     Grafo global_grafo = melhor_grafo;
 
+
     random_device rd;
     mt19937 gerador(rd());
     uniform_int_distribution<int> dist_maquina(0, M - 1);
     uniform_int_distribution<int> dist_trabalho(0, N - 1);
+    uniform_real_distribution<double> dist_prob(0.0, 1.0);
 
     int k = 1;
     int k_max = 10;
     int paciencia = 0;
-    int max_paciencia = 10000;
+    int max_paciencia = 2000;
 
     auto inicio = chrono::high_resolution_clock::now();
 
     while(true) {
         auto agora = chrono::high_resolution_clock::now();
         chrono::duration<double> tempo_passado = agora - inicio;
-        
         if(tempo_passado.count() > tempo_limite_seg) break;
 
         vector<vector<int>> nova_seq = melhor_seq;
@@ -114,7 +149,16 @@ Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) {
             int m_rand = dist_maquina(gerador); 
             int p1 = dist_trabalho(gerador);    
             int p2 = dist_trabalho(gerador);    
-            swap(nova_seq[m_rand][p1], nova_seq[m_rand][p2]); 
+            if (p1 != p2) {
+                // Alternância entre Swap e Inserção
+                if (dist_prob(gerador) < 0.5) {
+                    swap(nova_seq[m_rand][p1], nova_seq[m_rand][p2]); 
+                } else {
+                    int job = nova_seq[m_rand][p1];
+                    nova_seq[m_rand].erase(nova_seq[m_rand].begin() + p1);
+                    nova_seq[m_rand].insert(nova_seq[m_rand].begin() + p2, job);
+                }
+            }
         }
 
         Grafo grafo_teste(N * M);
@@ -135,28 +179,24 @@ Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) {
                 global_grafo = melhor_grafo;
             }
         } 
-        else if (aval_teste.flowtime == melhor_flowtime) {
-            melhor_seq = nova_seq;
-            melhor_grafo = grafo_teste;
-            melhor_makespan = aval_teste.makespan;
-            k++;
-            paciencia++;
-        } 
         else {
-            k++;
+            k++; 
             paciencia++;
+            if (aval_teste.flowtime == melhor_flowtime) {
+                melhor_seq = nova_seq;
+                melhor_grafo = grafo_teste;
+                melhor_makespan = aval_teste.makespan;
+            } 
         }
 
         if (k > k_max) k = 1;
 
         if (paciencia > max_paciencia) {
-            for(int j = 0; j < M; j++) {
-                std::shuffle(melhor_seq[j].begin(), melhor_seq[j].end(), gerador);
-            }
+            for(int j = 0; j < M; j++) shuffle(melhor_seq[j].begin(), melhor_seq[j].end(), gerador);
             Avaliacao aval_reset = avaliarGrafo(inst, melhor_seq, melhor_grafo);
             melhor_flowtime = aval_reset.flowtime;
             melhor_makespan = aval_reset.makespan;
-            k = 1;
+            k = 1; 
             paciencia = 0;
         }
     }

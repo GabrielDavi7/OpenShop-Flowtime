@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <iomanip>
 #include <algorithm>
+#include <thread>
+#include <mutex>
 #include "../include/ParserTA.hpp"
 #include "../include/Grafo.hpp"
 
@@ -17,7 +19,8 @@ struct Avaliacao {
     int id_no_makespan; 
 };
 
-Avaliacao avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas, Grafo& grafo_out) { // Avalia o grafo gerado a partir da sequência de máquinas e retorna o flowtime, makespan e o ID do vértice que define o makespan
+// Avalia o grafo e retorna flowtime, makespan e o nó final do caminho crítico
+Avaliacao avaliarGrafo(const Instancia& inst, const vector<vector<int>>& seq_maquinas, Grafo& grafo_out) {
     int N = inst.num_trabalhos;
     int M = inst.num_maquinas;
     Grafo g(N * M);
@@ -74,99 +77,160 @@ struct Resultado {
     Grafo grafo;
 };
 
-Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) { // Otimiza a sequência de máquinas usando uma busca local do tipo VNS e retorna o melhor flowtime, makespan, ID do vértice do makespan e grafo encontrado
+// Estrutura auxiliar para o processamento paralelo da vizinhança
+struct Vizinho {
+    vector<vector<int>> seq;
+    int job1, job2;
+    int flowtime;
+    int makespan;
+    int id_no_makespan;
+    Grafo grafo = Grafo(0);
+};
+
+Resultado otimizarBuscaLocal(const Instancia& inst, double tempo_limite_seg) { 
     int N = inst.num_trabalhos;
     int M = inst.num_maquinas;
 
-    vector<vector<int>> melhor_seq(M, vector<int>(N));
+    // Inicialização (SPT vs Sequencial)
+    vector<pair<int, int>> custo_jobs(N);
+    for(int i = 0; i < N; i++) {
+        custo_jobs[i].first = i;
+        custo_jobs[i].second = 0;
+        for(int j = 0; j < M; j++) custo_jobs[i].second += inst.custos[i][j];
+    }
+    sort(custo_jobs.begin(), custo_jobs.end(), [](const pair<int, int>& a, const pair<int, int>& b) {
+        return a.second < b.second;
+    });
+
+    vector<vector<int>> seq_spt(M, vector<int>(N));
+    vector<vector<int>> seq_burra(M, vector<int>(N));
     for(int j = 0; j < M; j++) {
-        for(int i = 0; i < N; i++) melhor_seq[j][i] = i;
+        for(int i = 0; i < N; i++) {
+            seq_spt[j][i] = custo_jobs[i].first;
+            seq_burra[j][i] = i;
+        }
     }
 
-    Grafo melhor_grafo(N * M);
-    Avaliacao aval_inicial = avaliarGrafo(inst, melhor_seq, melhor_grafo);
-    
-    int melhor_flowtime = aval_inicial.flowtime;
-    int melhor_makespan = aval_inicial.makespan;
+    Grafo g_spt(N*M), g_burra(N*M);
+    Avaliacao aval_spt = avaliarGrafo(inst, seq_spt, g_spt);
+    Avaliacao aval_burra = avaliarGrafo(inst, seq_burra, g_burra);
 
-    int global_flowtime = melhor_flowtime;
-    int global_makespan = melhor_makespan;
-    int global_id_makespan = aval_inicial.id_no_makespan;
-    vector<vector<int>> global_seq = melhor_seq;
-    Grafo global_grafo = melhor_grafo;
+    vector<vector<int>> seq_atual;
+    int best_ft;
+    if(aval_spt.flowtime < aval_burra.flowtime) {
+        seq_atual = seq_spt;
+        best_ft = aval_spt.flowtime;
+    } else {
+        seq_atual = seq_burra;
+        best_ft = aval_burra.flowtime;
+    }
 
+    // Variáveis Globais de Retorno
+    int global_flowtime = best_ft;
+    int global_makespan = (best_ft == aval_spt.flowtime) ? aval_spt.makespan : aval_burra.makespan;
+    int global_id_makespan = (best_ft == aval_spt.flowtime) ? aval_spt.id_no_makespan : aval_burra.id_no_makespan;
+    Grafo global_grafo = (best_ft == aval_spt.flowtime) ? g_spt : g_burra;
+
+    // CONFIGURAÇÃO TABU E PARALELISMO
     random_device rd;
     mt19937 gerador(rd());
     uniform_int_distribution<int> dist_maquina(0, M - 1);
     uniform_int_distribution<int> dist_trabalho(0, N - 1);
+    uniform_real_distribution<double> dist_prob(0.0, 1.0);
 
-    int k = 1;
-    int k_max = 10;
+    vector<vector<int>> matriz_tabu(N, vector<int>(N, 0));
+    int iteracao = 0;
+    int tabu_tenure = max(5, N / 2);
+    int num_threads = thread::hardware_concurrency();
+    if(num_threads == 0) num_threads = 4;
+    int num_vizinhos = 100; 
+
     int paciencia = 0;
-    int max_paciencia = 10000;
+    int max_paciencia = 500;
 
     auto inicio = chrono::high_resolution_clock::now();
 
     while(true) {
         auto agora = chrono::high_resolution_clock::now();
-        chrono::duration<double> tempo_passado = agora - inicio;
-        
-        if(tempo_passado.count() > tempo_limite_seg) break;
+        if(chrono::duration<double>(agora - inicio).count() > tempo_limite_seg) break;
 
-        vector<vector<int>> nova_seq = melhor_seq;
-        
-        for(int s = 0; s < k; s++) {
-            int m_rand = dist_maquina(gerador); 
-            int p1 = dist_trabalho(gerador);    
-            int p2 = dist_trabalho(gerador);    
-            swap(nova_seq[m_rand][p1], nova_seq[m_rand][p2]); 
-        }
-
-        Grafo grafo_teste(N * M);
-        Avaliacao aval_teste = avaliarGrafo(inst, nova_seq, grafo_teste);
-
-        if(aval_teste.flowtime < melhor_flowtime) { 
-            melhor_flowtime = aval_teste.flowtime;
-            melhor_makespan = aval_teste.makespan;
-            melhor_seq = nova_seq;
-            melhor_grafo = grafo_teste;
-            k = 1; 
-            paciencia = 0;
-
-            if (melhor_flowtime < global_flowtime) {
-                global_flowtime = melhor_flowtime;
-                global_makespan = melhor_makespan;
-                global_id_makespan = aval_teste.id_no_makespan;
-                global_seq = melhor_seq;
-                global_grafo = melhor_grafo;
-            }
-        } 
-        else if (aval_teste.flowtime == melhor_flowtime) {
-            melhor_seq = nova_seq;
-            melhor_grafo = grafo_teste;
-            melhor_makespan = aval_teste.makespan;
-            k++;
-            paciencia++;
-        } 
-        else {
-            k++;
-            paciencia++;
-        }
-
-        if (k > k_max) k = 1;
-
+        // VNS Shake: Diversificação se estagnar
         if (paciencia > max_paciencia) {
-            for(int j = 0; j < M; j++) {
-                std::shuffle(melhor_seq[j].begin(), melhor_seq[j].end(), gerador);
-            }
-            Avaliacao aval_reset = avaliarGrafo(inst, melhor_seq, melhor_grafo);
-            melhor_flowtime = aval_reset.flowtime;
-            melhor_makespan = aval_reset.makespan;
-            k = 1;
+            for(int j = 0; j < M; j++) shuffle(seq_atual[j].begin(), seq_atual[j].end(), gerador);
+            for(int r = 0; r < N; r++) fill(matriz_tabu[r].begin(), matriz_tabu[r].end(), 0);
             paciencia = 0;
         }
+
+        // Geração de Vizinhança
+        vector<Vizinho> vizinhanca(num_vizinhos);
+        for(int i = 0; i < num_vizinhos; i++) {
+            vizinhanca[i].seq = seq_atual;
+            int m = dist_maquina(gerador);
+            int p1 = dist_trabalho(gerador);
+            int p2 = dist_trabalho(gerador);
+            while(p1 == p2) p2 = dist_trabalho(gerador);
+
+            vizinhanca[i].job1 = vizinhanca[i].seq[m][p1];
+            vizinhanca[i].job2 = vizinhanca[i].seq[m][p2];
+
+            if(dist_prob(gerador) < 0.5) swap(vizinhanca[i].seq[m][p1], vizinhanca[i].seq[m][p2]);
+            else {
+                int j1 = vizinhanca[i].seq[m][p1];
+                vizinhanca[i].seq[m].erase(vizinhanca[i].seq[m].begin() + p1);
+                vizinhanca[i].seq[m].insert(vizinhanca[i].seq[m].begin() + p2, j1);
+            }
+        }
+
+        // AVALIAÇÃO PARALELA
+        vector<thread> worker_threads;
+        int chunk = num_vizinhos / num_threads;
+        for(int t = 0; t < num_threads; t++) {
+            int start = t * chunk;
+            int end = (t == num_threads - 1) ? num_vizinhos : (t + 1) * chunk;
+            worker_threads.emplace_back([&, start, end]() {
+                for(int i = start; i < end; i++) {
+                    vizinhanca[i].grafo = Grafo(N * M);
+                    Avaliacao a = avaliarGrafo(inst, vizinhanca[i].seq, vizinhanca[i].grafo);
+                    vizinhanca[i].flowtime = a.flowtime;
+                    vizinhanca[i].makespan = a.makespan;
+                    vizinhanca[i].id_no_makespan = a.id_no_makespan;
+                }
+            });
+        }
+        for(auto& th : worker_threads) th.join();
+
+        // Escolha do melhor vizinho (Critério Tabu + Aspiração)
+        int best_idx = -1;
+        int best_ft_viz = 2147483647;
+
+        for(int i = 0; i < num_vizinhos; i++) {
+            bool is_tabu = (matriz_tabu[vizinhanca[i].job1][vizinhanca[i].job2] > iteracao);
+            
+            // Aspiração: Aceita se for melhor que o recorde global
+            if(is_tabu && vizinhanca[i].flowtime < global_flowtime) is_tabu = false;
+
+            if(!is_tabu && vizinhanca[i].flowtime < best_ft_viz) {
+                best_ft_viz = vizinhanca[i].flowtime;
+                best_idx = i;
+            }
+        }
+
+        if(best_idx != -1) {
+            seq_atual = vizinhanca[best_idx].seq;
+            matriz_tabu[vizinhanca[best_idx].job1][vizinhanca[best_idx].job2] = iteracao + tabu_tenure;
+            matriz_tabu[vizinhanca[best_idx].job2][vizinhanca[best_idx].job1] = iteracao + tabu_tenure;
+
+            if(vizinhanca[best_idx].flowtime < global_flowtime) {
+                global_flowtime = vizinhanca[best_idx].flowtime;
+                global_makespan = vizinhanca[best_idx].makespan;
+                global_id_makespan = vizinhanca[best_idx].id_no_makespan;
+                global_grafo = vizinhanca[best_idx].grafo;
+                paciencia = 0;
+            } else paciencia++;
+        } else paciencia++;
+
+        iteracao++;
     }
-    
     return {global_flowtime, global_makespan, global_id_makespan, global_grafo};
 }
 
@@ -180,12 +244,22 @@ int main() { // Função principal que coordena o processamento em lote das inst
         return 1;
     }
 
-    double tempo_por_instancia = 20.0; // 20 segundos por arquivo
-
-    vector<string> instancias_alvo = {
-        "ta01Osp.psi", "ta02Osp.psi", "ta05Osp.psi", "ta10Osp.psi", "ta20Osp.psi"
-    };
-
+    double tempo_por_instancia = 360; 
+    vector<string> instancias_alvo = { // Lista de instâncias específicas para gerar os dados de caminhos críticos, nesse caso estão todas, mas pode ser filtrada para um subconjunto se desejado
+        "ta31Osp.psi",
+};
+/*      "ta01Osp.psi", "ta02Osp.psi", "ta03Osp.psi", "ta04Osp.psi", "ta05Osp.psi",
+        "ta06Osp.psi", "ta07Osp.psi", "ta08Osp.psi", "ta09Osp.psi", "ta10Osp.psi",
+        "ta11Osp.psi", "ta12Osp.psi", "ta13Osp.psi", "ta14Osp.psi", "ta15Osp.psi",
+        "ta16Osp.psi", "ta17Osp.psi", "ta18Osp.psi", "ta19Osp.psi", "ta20Osp.psi",
+        "ta21Osp.psi", "ta22Osp.psi", "ta23Osp.psi", "ta24Osp.psi", "ta25Osp.psi",
+        "ta26Osp.psi", "ta27Osp.psi", "ta28Osp.psi", "ta29Osp.psi", "ta30Osp.psi",
+        "ta31Osp.psi", "ta32Osp.psi", "ta33Osp.psi", "ta34Osp.psi", "ta35Osp.psi",
+        "ta36Osp.psi", "ta37Osp.psi", "ta38Osp.psi", "ta39Osp.psi", "ta40Osp.psi",
+        "ta41Osp.psi", "ta42Osp.psi", "ta43Osp.psi", "ta44Osp.psi", "ta45Osp.psi",
+        "ta46Osp.psi", "ta47Osp.psi", "ta48Osp.psi", "ta49Osp.psi", "ta50Osp.psi",
+        "ta51Osp.psi", "ta52Osp.psi", "ta53Osp.psi", "ta54Osp.psi", "ta55Osp.psi",
+        "ta56Osp.psi", "ta57Osp.psi", "ta58Osp.psi", "ta59Osp.psi", "ta60Osp.psi",   */
     cout << "\n================================================================================\n";
     cout << "      GERADOR DE DADOS PARA SLIDES - CAMINHOS CRITICOS (" << tempo_por_instancia << "s/arq)      \n";
     cout << "================================================================================\n";
